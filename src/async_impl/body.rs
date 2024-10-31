@@ -6,8 +6,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use http_body::Body as HttpBody;
-use http_body_util::combinators::BoxBody;
-//use sync_wrapper::SyncWrapper;
+use http_body_util::combinators::UnsyncBoxBody;
 use pin_project_lite::pin_project;
 #[cfg(feature = "stream")]
 use tokio::fs::File;
@@ -22,7 +21,7 @@ pub struct Body {
 
 enum Inner {
     Reusable(Bytes),
-    Streaming(BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>),
+    Streaming(UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>),
 }
 
 pin_project! {
@@ -107,11 +106,11 @@ impl Body {
         use http_body::Frame;
         use http_body_util::StreamBody;
 
-        let body = http_body_util::BodyExt::boxed(StreamBody::new(sync_wrapper::SyncStream::new(
+        let body = http_body_util::BodyExt::boxed_unsync(StreamBody::new(
             stream
                 .map_ok(|d| Frame::data(Bytes::from(d)))
                 .map_err(Into::into),
-        )));
+        ));
         Body {
             inner: Inner::Streaming(body),
         }
@@ -142,7 +141,7 @@ impl Body {
     /// ```
     pub fn wrap<B>(inner: B) -> Body
     where
-        B: HttpBody + Send + Sync + 'static,
+        B: HttpBody + Send + 'static,
         B::Data: Into<Bytes>,
         B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
@@ -151,7 +150,7 @@ impl Body {
         let boxed = inner
             .map_frame(|f| f.map_data(Into::into))
             .map_err(Into::into)
-            .boxed();
+            .boxed_unsync();
 
         Body {
             inner: Inner::Streaming(boxed),
@@ -393,7 +392,7 @@ where
 }
 
 pub(crate) type ResponseBody =
-    http_body_util::combinators::BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+    http_body_util::combinators::UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 
 pub(crate) fn boxed<B>(body: B) -> ResponseBody
 where
@@ -402,7 +401,7 @@ where
 {
     use http_body_util::BodyExt;
 
-    body.map_err(box_err).boxed()
+    body.map_err(box_err).boxed_unsync()
 }
 
 pub(crate) fn response<B>(
@@ -411,7 +410,7 @@ pub(crate) fn response<B>(
     read_timeout: Option<Duration>,
 ) -> ResponseBody
 where
-    B: hyper::body::Body<Data = Bytes> + Send + Sync + 'static,
+    B: hyper::body::Body<Data = Bytes> + Send + 'static,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     use http_body_util::BodyExt;
@@ -419,11 +418,13 @@ where
     match (deadline, read_timeout) {
         (Some(total), Some(read)) => {
             let body = with_read_timeout(body, read).map_err(box_err);
-            total_timeout(body, total).map_err(box_err).boxed()
+            total_timeout(body, total).map_err(box_err).boxed_unsync()
         }
-        (Some(total), None) => total_timeout(body, total).map_err(box_err).boxed(),
-        (None, Some(read)) => with_read_timeout(body, read).map_err(box_err).boxed(),
-        (None, None) => body.map_err(box_err).boxed(),
+        (Some(total), None) => total_timeout(body, total).map_err(box_err).boxed_unsync(),
+        (None, Some(read)) => with_read_timeout(body, read)
+            .map_err(box_err)
+            .boxed_unsync(),
+        (None, None) => body.map_err(box_err).boxed_unsync(),
     }
 }
 

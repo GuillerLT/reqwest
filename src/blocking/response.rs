@@ -20,7 +20,7 @@ use crate::{async_impl, StatusCode, Url, Version};
 /// A Response to a submitted `Request`.
 pub struct Response {
     inner: async_impl::Response,
-    body: Option<Pin<Box<dyn futures_util::io::AsyncRead + Send + Sync>>>,
+    body: Option<Pin<Box<dyn futures_util::io::AsyncRead + Send>>>,
     timeout: Option<Duration>,
     _thread_handle: KeepCoreThreadAlive,
 }

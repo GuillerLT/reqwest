@@ -148,14 +148,14 @@ impl Form {
         // create initial part to init reduce chain
         let (name, part) = self.inner.fields.remove(0);
         let start = Box::pin(self.part_stream(name, part))
-            as Pin<Box<dyn Stream<Item = crate::Result<Bytes>> + Send + Sync>>;
+            as Pin<Box<dyn Stream<Item = crate::Result<Bytes>> + Send>>;
 
         let fields = self.inner.take_fields();
         // for each field, chain an additional stream
         let stream = fields.into_iter().fold(start, |memo, (name, part)| {
             let part_stream = self.part_stream(name, part);
             Box::pin(memo.chain(part_stream))
-                as Pin<Box<dyn Stream<Item = crate::Result<Bytes>> + Send + Sync>>
+                as Pin<Box<dyn Stream<Item = crate::Result<Bytes>> + Send>>
         });
         // append special ending boundary
         let last = stream::once(future::ready(Ok(

@@ -161,7 +161,7 @@ impl PoolClient {
             .map_err(|never| match never {})
             .boxed();
 
-        Ok(resp.map(|_| resp_body))
+        Ok(resp.map(|_| resp_body.boxed_unsync()))
     }
 }
 
